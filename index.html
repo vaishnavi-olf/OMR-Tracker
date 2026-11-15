@@ -226,6 +226,11 @@ function districtsByState(){
   for (const st of ORDER) map[st].sort((a,b)=>a.localeCompare(b,"en",{numeric:true}));
   return map;
 }
+function pmStateMap(){
+  const m = {};
+  for (const d of DATA){ for (const n of String(d.pm||"").split(" / ")){ if(!n) continue; (m[n] ||= new Set()).add(d.state); } }
+  return m;
+}
 function stateOfDistrict(dn){ const d = DATA.find(x=>x.district===dn); return d ? d.state : null; }
 
 function setNotice(text, kind){
@@ -248,7 +253,14 @@ function init(){
     if (S.dist !== "All"){ const st = stateOfDistrict(S.dist); if (st) S.st = st; }
     render();
   });
-  $("#pm").addEventListener("change", e=>{ S.pm=e.target.value; render(); });
+  $("#pm").addEventListener("change", e=>{
+    S.pm = e.target.value;
+    if (S.pm !== "All"){
+      const states = Object.keys(pmStateMap()).length ? [...(pmStateMap()[S.pm]||[])] : [];
+      if (states.length === 1){ S.st = states[0]; if (S.dist !== "All" && stateOfDistrict(S.dist) !== S.st) S.dist = "All"; }
+    }
+    render();
+  });
   $("#stage").addEventListener("change", e=>{ S.stage=e.target.value; render(); });
   $("#q").addEventListener("input", e=>{ S.q=e.target.value.trim().toLowerCase(); render(); });
   $("#reset").addEventListener("click", ()=>{ Object.assign(S,{st:"All",dist:"All",pm:"All",stage:"All",q:""}); syncControls(); render(); });
@@ -298,9 +310,15 @@ function syncControls(){
     `<optgroup label="${esc(st)}">` + byState[st].map(dn=>{ const n=DATA.filter(d=>d.district===dn).length; return `<option value="${esc(dn)}">${esc(dn)} (${n})</option>`; }).join("") + `</optgroup>`).join("");
   if (S.dist!=="All" && !DATA.some(d=>d.district===S.dist && (S.st==="All"||d.state===S.st))) S.dist="All";
   $("#dist").value = S.dist;
-  const pms = [...new Set(DATA.flatMap(d=>String(d.pm||"").split(" / ")).filter(Boolean))].sort();
-  $("#pm").hidden = pms.length===0;
-  $("#pm").innerHTML = `<option value="All">All PMs</option>` + pms.map(p=>`<option>${esc(p)}</option>`).join("");
+  // PM dropdown: grouped by state, each group sorted; limited to the selected state
+  const pmStates = pmStateMap();
+  const pmVisible = S.st==="All" ? ORDER : [S.st];
+  const pmGroups = pmVisible.map(st=>({ st, names: Object.keys(pmStates).filter(n=>pmStates[n].has(st)).sort((a,b)=>a.localeCompare(b,"en")) })).filter(g=>g.names.length);
+  const allPmNames = pmGroups.flatMap(g=>g.names);
+  $("#pm").hidden = allPmNames.length===0;
+  if (S.pm!=="All" && !allPmNames.includes(S.pm)) S.pm="All";
+  $("#pm").innerHTML = `<option value="All">All PMs</option>` + pmGroups.map(g=>
+    `<optgroup label="${esc(g.st)}">` + g.names.map(n=>`<option>${esc(n)}</option>`).join("") + `</optgroup>`).join("");
   $("#pm").value = S.pm;
   $("#stage").value = S.stage;
   $("#q").value = S.q;
